@@ -1,0 +1,99 @@
+
+import wikipediaapi
+
+# 1. НАСТРОЙКА ВИКИПЕДИИ
+wiki = wikipediaapi.Wikipedia(
+    user_agent="MyDiscordBot/1.0 (contact: test@example.com)",
+    language="ru"
+)
+
+# 2. НАСТРОЙКА ДИСКОРД-БОТА
+intents = discord.Intents.default()
+intents.message_content = True  # Разрешаем боту читать текст сообщений
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+bot_memory = {}
+
+@bot.event
+async def on_ready():
+    print(f"🤖 [УСПЕХ] Квазар успешно подключился к Discord!")
+    print(f"Имя бота в сети: {bot.user}")
+
+@bot.event
+async def on_message(message):
+    # Защита: бот игнорирует сам себя
+    if message.author == bot.user:
+        return
+
+    user_input = message.content.strip()
+    user_input_lower = user_input.lower()
+
+    # ПРОВЕРКА: Если сообщение начинается с имени бота
+    if user_input_lower.startswith("квазар, ") or user_input_lower.startswith("квазар "):
+        
+        # Показываем в Дискорде анимацию "Квазар печатает..."
+        async with message.channel.typing():
+            
+            # Очищаем имя бота из запроса
+            if user_input_lower.startswith("квазар, "):
+                user_input_lower = user_input_lower.replace("квазар, ", "")
+            elif user_input_lower.startswith("квазар "):
+                user_input_lower = user_input_lower.replace("квазар ", "")
+
+            # Разговорные команды
+            if user_input_lower in ["привет", "здравствуй", "приветули"]:
+                await message.channel.send(f"👋 Привет, {message.author.mention}! Я на связи. Что ищем?")
+                return
+                
+            elif user_input_lower in ["молчи", "тихо", "замолчи"]:
+                await message.channel.send("🤐 Всё-всё, ухожу в режим тишины...")
+                return
+
+            # Удаление «шелухи» из запросов в Википедию
+            garbage_phrases = [
+                "что такое ", "кто такой ", "кто такая ", 
+                "расскажи про ", "что ты знаешь о ",
+                "а что такое ", "что это "
+            ]
+            
+            search_query = user_input_lower
+            for phrase in garbage_phrases:
+                if search_query.startswith(phrase):
+                    search_query = search_query.replace(phrase, "")
+                    
+            if search_query.endswith("?"):
+                search_query = search_query[:-1].strip()
+
+            # Калькулятор
+            math_check = search_query.replace(" ", "")
+            if any(char.isdigit() for char in math_check) and all(char in "0123456789+-*/()." for char in math_check):
+                try:
+                    result = eval(math_check)
+                    await message.channel.send(f"🔢 **Калькулятор:** `{search_query}` = **{result}**")
+                    return
+                except:
+                    pass
+
+            # Поиск в Википедии (сначала проверяем память бота)
+            if search_query in bot_memory:
+                await message.channel.send(f"🧠 **Квазар (из памяти):** {bot_memory[search_query]}")
+                
+            else:
+                wiki_query = search_query.capitalize()
+                page = wiki.page(wiki_query)
+                
+                if page.exists():
+                    if "может означать" in page.summary or "— список значений" in page.summary:
+                        await message.channel.send("⚠️ По этому запросу найдено несколько значений. Уточни, пожалуйста!")
+                        return
+                        
+                    sentences = page.summary.split('. ')
+                    short_answer = ". ".join(sentences[:3]) + "."
+                    
+                    await message.channel.send(f"📖 **Квазар (Википедия):** {short_answer}")
+                    bot_memory[search_query] = short_answer
+                    
+                else:
+                    await message.channel.send("🔍 Я не нашел такой статьи в Википедии. Перепроверь слово!")
+
+    await bot.process_commands(message)
